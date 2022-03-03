@@ -1,6 +1,6 @@
 from functools import partial
 import torch
-from .megawass import MegaWass
+from ucoot_code.megawass import MegaWass
 
 # just to ignore Scikit-learn depreciation warnings
 def warn(*args, **kwargs):
@@ -8,6 +8,7 @@ def warn(*args, **kwargs):
 import warnings
 warnings.warn = warn
 from sklearn.cluster import KMeans
+
 
 class Barycenter(MegaWass):
     def __init__(self, nits_bcd=100, tol_bcd=1e-7, eval_bcd=5, \
@@ -99,9 +100,9 @@ class Barycenter(MegaWass):
             list_pi.append(pi)
             list_dual.append(dual)
             list_cost.append(cost[-1])
-        
+
         return list_pi, list_dual, list_cost
-    
+
     def init_bary_attr(self, list_weight, list_attr, bary_dim, random_state):
         list_weighted_attr = [w * attr for (w, attr) in zip(list_weight, list_attr) \
                             if attr is not None]
@@ -180,7 +181,7 @@ class Barycenter(MegaWass):
             log_cost.append(cost)
             if abs(log_cost[-2] - log_cost[-1]) < self.tol_bary:
                 break
-        
+
         if log:
             return bary, bary_attr, log_cost[1:]
         else:

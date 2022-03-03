@@ -1,11 +1,11 @@
 import torch
 from functools import partial
 
-from .utils import quad_kl, kl, approx_kl
+from ucoot_code.utils import quad_kl, kl, approx_kl
 
 # require torch >= 1.9
 
-# This implementation is a special case of FUCOOT. 
+# This implementation is a special case of FUCOOT.
 # - supports both type of regularisation: independent or joint.
 # - supports semi-relaxed (by setting rho=0) and COOT (by setting rho=infty).
 # - supports using pretrained models (use warmstart dual and coupling).
@@ -49,7 +49,7 @@ class UCOOT:
         pi = ab * (f[:, None] + g[None, :] - cost / eps).exp()
 
         return (f, g), pi
-        
+
     def get_local_cost(self, data, pi, tuple_p):
         """
         """
@@ -111,7 +111,7 @@ class UCOOT:
 
     def get_barycentre(self, Xt, pi_samp):
         """
-        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt 
+        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt
         (need to be typed in latex).
 
         Parameters
@@ -159,22 +159,22 @@ class UCOOT:
         px: tuple of 2 vectors of length (nx, dx). Measures assigned on rows and columns of X.
         py: tuple of 2 vectors of length (ny, dy). Measures assigned on rows and columns of Y.
         rho: tuple of 2 relaxation parameters (rho_x, rho_y) for UCOOT.
-        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation. 
+        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation.
             If mode == "joint" then only eps_samp is used.
         C_linear: tuple of tensors of size (nx x ny) and (dx x dy): the linear terms in the fused formulation.
         reg_mode:
             reg_mode="joint": use UGW-like regularisation term.
             reg_mode = "independent": use COOT-like regularisation.
-        init_pi: tuple of initialisation for sample and feature couplings: 
+        init_pi: tuple of initialisation for sample and feature couplings:
             matrices of size (nx x ny) and (dx x dy). If not available then assign None.
         init_duals: tuple of two tuples containing initialisation of duals for Sinkhorn algorithm.
         log: True if the loss is recorded, False otherwise.
         verbose: if True then print the recorded loss.
-        early_stopping_threshold: trigger early stopping if the absolute difference between the two most 
+        early_stopping_threshold: trigger early stopping if the absolute difference between the two most
             recent loss is smaller than this threshold.
-        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e. 
+        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e.
             if eval_freq_loss = 10, then the loss is calculated at iteration 10, 20, 30, etc...
-        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated 
+        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated
             in the Sinkhorn algorithm.
 
         Returns
@@ -321,7 +321,7 @@ class UCOOT:
         niter_warmstart_sinkhorn=10
     ):
         """
-        Solver with warm start for small epsilon, for reg_mode="joint", 
+        Solver with warm start for small epsilon, for reg_mode="joint",
         or "independent" with two equals epsilons.
         """
 
@@ -394,7 +394,7 @@ if __name__ == "__main__":
             verbose=True, early_stopping_threshold=1e-6, eval_freq_loss=1, eval_freq_sinkhorn=10)
 
     print("===============")
-    
+
     # test faster solver
     eps_step = 5
     eps = 1e-2

@@ -1,6 +1,7 @@
 from warnings import WarningMessage
-from .utils import solver
-import torch
+from ucoot_code.utils import solver
+# import torch
+
 
 class MegaWass:
     def __init__(self, nits_bcd=100, tol_bcd=1e-7, eval_bcd=5, nits_uot=100, tol_uot=1e-7, eval_uot=1):
@@ -18,7 +19,7 @@ class MegaWass:
 
     def get_barycentre(self, Xt, pi_samp):
         """
-        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt 
+        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt
         (need to be typed in latex).
 
         Parameters
@@ -48,11 +49,10 @@ class MegaWass:
         alpha=(1, 1),
         D=(None, None),
         init_pi=(None, None),
-        init_dual=(None, None),
+        init_duals=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6, 
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
         Parameters for mode:
@@ -91,11 +91,10 @@ class MegaWass:
         log_cost: if log is True, return a list of loss (without taking into account the regularisation term).
         log_ent_cost: if log is True, return a list of entropic loss.
         """
-
         return solver(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, init_pi, \
-                    init_dual, log, verbose, early_stopping_tol, mass_rescaling, \
-                    eval_bcd=self.eval_bcd, eval_uot=self.eval_uot, tol_bcd=self.tol_bcd, \
-                    nits_bcd=self.nits_bcd, tol_uot=self.tol_uot, nits_uot=self.nits_uot)
+                    init_duals, log, verbose, early_stopping_tol, eval_bcd=self.eval_bcd, \
+                    eval_uot=self.eval_uot, tol_bcd=self.tol_bcd, nits_bcd=self.nits_bcd, \
+                    tol_uot=self.tol_uot, nits_uot=self.nits_uot)
 
     def solver_fcoot(
         self,
@@ -106,15 +105,14 @@ class MegaWass:
         eps=(1e-2, 1e-2),
         alpha=(1, 1),
         D=(None, None),
-        init_dual=(None, None),
+        init_duals=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6,
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
-        If you want to use fused COOT, it is recommended to use COOT from POT because it is 
-        much more optimised.        
+        If you want to use fused COOT, it is recommended to use COOT from POT because it is
+        much more optimised.
         """
 
         rho = (float("inf"), float("inf"), 0, 0, 0, 0)
@@ -123,7 +121,7 @@ class MegaWass:
         init_pi = (None, None)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-                                init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
+                                    init_pi, init_duals, log, verbose, early_stopping_tol)
 
     def solver_fucoot(
         self,
@@ -138,11 +136,10 @@ class MegaWass:
         alpha=(1, 1),
         D=(None, None),
         init_pi=(None, None),
-        init_dual=(None, None),
+        init_duals=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6,
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
         Parameters for some frequently used modes:
@@ -157,22 +154,22 @@ class MegaWass:
         px: tuple of 2 vectors of length (nx, dx). Measures assigned on rows and columns of X.
         py: tuple of 2 vectors of length (ny, dy). Measures assigned on rows and columns of Y.
         rho: tuple of 2 relaxation parameters (rho_x, rho_y) for UCOOT.
-        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation. 
+        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation.
             If mode == "joint" then only eps_samp is used.
         C_linear: tuple of tensors of size (nx x ny) and (dx x dy): the linear terms in the fused formulation.
         reg_mode:
             reg_mode="joint": use UGW-like regularisation term.
             reg_mode = "independent": use COOT-like regularisation.
-        init_pi: tuple of initialisation for sample and feature couplings: 
+        init_pi: tuple of initialisation for sample and feature couplings:
             matrices of size (nx x ny) and (dx x dy). If not available then assign None.
-        init_dual: tuple of two tuples containing initialisation of duals for Sinkhorn algorithm.
+        init_duals: tuple of two tuples containing initialisation of duals for Sinkhorn algorithm.
         log: True if the loss is recorded, False otherwise.
         verbose: if True then print the recorded loss.
-        early_stopping_threshold: trigger early stopping if the absolute difference between the two most 
+        early_stopping_threshold: trigger early stopping if the absolute difference between the two most
             recent loss is smaller than this threshold.
-        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e. 
+        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e.
             if eval_freq_loss = 10, then the loss is calculated at iteration 10, 20, 30, etc...
-        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated 
+        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated
             in the Sinkhorn algorithm.
 
         Returns
@@ -187,7 +184,7 @@ class MegaWass:
         rho = (rho1, rho2, 0, 0, 0, 0)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-                                init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
+                                    init_pi, init_duals, log, verbose, early_stopping_tol)
 
     def solver_fgw(
         self,
@@ -198,37 +195,29 @@ class MegaWass:
         eps=1e-2,
         alpha=1,
         D=None,
-        init_dual=None,
+        init_duals=None,
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6,
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
-        If you want to use fused GW, it is recommended to use COOT from POT because it is 
+        If you want to use fused GW, it is recommended to use COOT from POT because it is
         much more optimised.
         """
 
-        if isinstance(X, tuple):
-            X1, X2 = X
-            nx, dx = X1.shape[0], X2.shape[0]
-        elif torch.is_tensor(X):
-            nx, dx = X.shape
-        else:
-            raise ValueError("Invalid type of input.")
-
+        nx, dx = X.shape
         ny, dy = Y.shape
         if nx != dx or ny != dy:
             raise ValueError("The input matrix is not squared.")
 
-        px, py, D, init_dual = (px, px), (py, py), (D, D), (init_dual, init_dual)
+        px, py, D, init_duals = (px, px), (py, py), (D, D), (init_duals, init_duals)
         init_pi = (None, None)
         uot_mode = ("entropic", "entropic")
         entropic_mode = "independent"
         rho = (float("inf"), float("inf"), 0, 0, 0, 0)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-                                init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
+                                    init_pi, init_duals, log, verbose, early_stopping_tol)
 
     def solver_fugw_simple(
         self,
@@ -243,24 +232,16 @@ class MegaWass:
         alpha=1,
         D=None,
         init_pi=(None, None),
-        init_dual=(None, None),
+        init_duals=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6,
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
         Simple Fused UGW (no KL term in the UOT)
         """
 
-        if isinstance(X, tuple):
-            X1, X2 = X
-            nx, dx = X1.shape[0], X2.shape[0]
-        elif torch.is_tensor(X):
-            nx, dx = X.shape
-        else:
-            raise ValueError("Invalid type of input.")
-
+        nx, dx = X.shape
         ny, dy = Y.shape
         if nx != dx or ny != dy:
             raise ValueError("The input matrix is not squared.")
@@ -270,7 +251,7 @@ class MegaWass:
         rho = (rho1, rho2, 0, 0, 0, 0)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-                                init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
+                                    init_pi, init_duals, log, verbose, early_stopping_tol)
 
     def solver_fugw_full(
         self,
@@ -285,24 +266,16 @@ class MegaWass:
         alpha=1,
         D=None,
         init_pi=(None, None),
-        init_dual=(None, None),
+        init_duals=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6,
-        mass_rescaling=True
+        early_stopping_tol=1e-6
     ):
         """
         Complete Fused UGW
         """
 
-        if isinstance(X, tuple):
-            X1, X2 = X
-            nx, dx = X1.shape[0], X2.shape[0]
-        elif torch.is_tensor(X):
-            nx, dx = X.shape
-        else:
-            raise ValueError("Invalid type of input.")
-
+        nx, dx = X.shape
         ny, dy = Y.shape
         if nx != dx or ny != dy:
             raise ValueError("The input matrix is not squared.")
@@ -312,11 +285,11 @@ class MegaWass:
         rho = (rho1, rho2, rho3, rho4, rho3, rho4)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-                                    init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
+                                    init_pi, init_duals, log, verbose, early_stopping_tol)
 
     ##################################
     ##################################
-    # For uot_mode = "entropic", 
+    # For uot_mode = "entropic",
     # use warmstart for small epsilon
     ##################################
     ##################################
@@ -334,7 +307,7 @@ class MegaWass:
     #     alpha=(1, 1),
     #     D=(None, None),
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -343,7 +316,7 @@ class MegaWass:
     #     niter_warmstart_uot=10
     # ):
     #     """
-    #     Solver with warm start for small epsilon, 
+    #     Solver with warm start for small epsilon,
     #     for entropic_mode="joint", or "independent" with two equals epsilons.
     #     """
 
@@ -411,9 +384,9 @@ class MegaWass:
     #         self.eval_bcd = niter_warmstart_uot
 
     #         while (init_eps > eps[0]):
-    #             init_pi, init_dual = \
+    #             init_pi, init_duals = \
     #                 self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                     D, init_pi, init_dual, log=False, verbose=False)
+    #                     D, init_pi, init_duals, log=False, verbose=False)
 
     #             init_eps /= eps_step
 
@@ -423,7 +396,7 @@ class MegaWass:
     #         self.eval_uot = eval_uot
 
     #     return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
-    #         init_pi, init_dual, log, verbose, early_stopping_tol)
+    #         init_pi, init_duals, log, verbose, early_stopping_tol)
 
     # def faster_solver_fcoot(
     #     self,
@@ -436,7 +409,7 @@ class MegaWass:
     #     alpha=(1, 1),
     #     D=(None, None),
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -452,7 +425,7 @@ class MegaWass:
     #     uot_mode = "entropic"
 
     #     return self.faster_solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                                     D, init_pi, init_dual, log, verbose, early_stopping_tol, \
+    #                                     D, init_pi, init_duals, log, verbose, early_stopping_tol, \
     #                                     eps_step, init_eps, niter_warmstart_uot)
 
     # def faster_solver_fucoot(
@@ -468,7 +441,7 @@ class MegaWass:
     #     alpha=(1, 1),
     #     D=(None, None),
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -485,7 +458,7 @@ class MegaWass:
     #     uot_mode = "entropic"
 
     #     return self.faster_solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                                     D, init_pi, init_dual, log, verbose, early_stopping_tol, \
+    #                                     D, init_pi, init_duals, log, verbose, early_stopping_tol, \
     #                                     eps_step, init_eps, niter_warmstart_uot)
 
     # def faster_solver_fgw(
@@ -498,7 +471,7 @@ class MegaWass:
     #     alpha=1,
     #     D=None,
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -516,7 +489,7 @@ class MegaWass:
     #     uot_mode = "entropic"
 
     #     return self.faster_solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                                     D, init_pi, init_dual, log, verbose, early_stopping_tol, \
+    #                                     D, init_pi, init_duals, log, verbose, early_stopping_tol, \
     #                                     eps_step, init_eps, niter_warmstart_uot)
 
     # def faster_solver_fugw_simple(
@@ -531,7 +504,7 @@ class MegaWass:
     #     alpha=1,
     #     D=None,
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -549,7 +522,7 @@ class MegaWass:
     #     uot_mode = "entropic"
 
     #     return self.faster_solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                                     D, init_pi, init_dual, log, verbose, early_stopping_tol, \
+    #                                     D, init_pi, init_duals, log, verbose, early_stopping_tol, \
     #                                     eps_step, init_eps, niter_warmstart_uot)
 
     # def faster_solver_fugw_full(
@@ -564,7 +537,7 @@ class MegaWass:
     #     alpha=1,
     #     D=None,
     #     init_pi=(None, None),
-    #     init_dual=(None, None),
+    #     init_duals=(None, None),
     #     log=False,
     #     verbose=False,
     #     early_stopping_tol=1e-6,
@@ -582,5 +555,5 @@ class MegaWass:
     #     uot_mode = "entropic"
 
     #     return self.faster_solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, \
-    #                                     D, init_pi, init_dual, log, verbose, early_stopping_tol, \
+    #                                     D, init_pi, init_duals, log, verbose, early_stopping_tol, \
     #                                     eps_step, init_eps, niter_warmstart_uot)
