@@ -1,6 +1,14 @@
 import torch
 # require torch >= 1.9
 from functools import partial
+from tqdm import tqdm
+
+def batch_calculation(mat1, mat2, vec):
+    m, n = mat1.shape[0], mat2.shape[0]
+    bs = min(int(1e8 / n), m)
+    rg = range(0, m, bs)
+    res = torch.cat([(mat1[i:i+bs:, :] @ mat2.T)**2 @ vec for i in rg], dim=0)
+    return res
 
 def approx_kl(p, q):
     """
@@ -43,7 +51,7 @@ def quad_kl(mu, nu, alpha, beta):
 
     return m_nu * kl(mu, alpha) + m_mu * kl(nu, beta) + const
 
-def uot_ent(cost, init_duals, tuple_log_p, params, n_iters, tol, eval_freq):
+def uot_ent(cost, init_dual, tuple_log_p, params, n_iters, tol, eval_freq):
     """
     Solve entropic UOT using Sinkhorn algorithm.
     Allow rho1 and/or rho2 to be infinity but epsilon must be strictly positive.
@@ -51,7 +59,7 @@ def uot_ent(cost, init_duals, tuple_log_p, params, n_iters, tol, eval_freq):
 
     rho1, rho2, eps = params
     log_a, log_b, ab = tuple_log_p
-    f, g = init_duals
+    f, g = init_dual
 
     tau1 = 1 if torch.isinf(rho1) else rho1 / (rho1 + eps)
     tau2 = 1 if torch.isinf(rho2) else rho2 / (rho2 + eps)
@@ -143,12 +151,19 @@ def get_local_cost(data, pi, tuple_p, hyperparams, entropic_mode):
     rho, eps = hyperparams
     rho1, rho2, _, _, _, _ = rho
     a, b, ab = tuple_p
-    X_sqr, Y_sqr, X, Y, D, alpha = data
+    X_sqr, Y_sqr, X, Y, alpha_D = data
 
     pi1, pi2 = pi.sum(1), pi.sum(0)
-    A = X_sqr @ pi1
     B = Y_sqr @ pi2
-    cost = A[:, None] + B[None, :] - 2 * X @ pi @ Y.T + alpha * D
+
+    if isinstance(X_sqr, tuple):
+        X1, X2 = X_sqr
+        A = batch_calculation(X1, X2, pi1)
+        cost = A[:, None] + B[None, :] - 2 * X1 @ ((X2.T @ pi) @ Y.T) + alpha_D
+
+    elif torch.is_tensor(X_sqr):        
+        A = X_sqr @ pi1
+        cost = A[:, None] + B[None, :] - 2 * X @ pi @ Y.T + alpha_D
 
     if rho1 != float("inf") and rho1 != 0:
         cost = cost + rho1 * approx_kl(pi1, a)
@@ -169,17 +184,26 @@ def get_cost(pi_samp, pi_feat, data, data_T, tuple_pxy_samp, tuple_pxy_feat, hyp
     rho1, rho2, rho1_samp, rho2_samp, rho1_feat, rho2_feat = rho
     px_samp, py_samp, pxy_samp = tuple_pxy_samp
     px_feat, py_feat, pxy_feat = tuple_pxy_feat
-    X_sqr, Y_sqr, X, Y, D_samp, alpha_samp = data
-    _, _, _, _, D_feat, alpha_feat = data_T
+    X_sqr, Y_sqr, X, Y, alpha_D_samp = data
+    _, _, _, _, alpha_D_feat = data_T
 
     pi1_samp, pi2_samp = pi_samp.sum(1), pi_samp.sum(0)
     pi1_feat, pi2_feat = pi_feat.sum(1), pi_feat.sum(0)
 
-    # UGW part
-    A_sqr = (X_sqr @ pi1_feat).dot(pi1_samp)
     B_sqr = (Y_sqr @ pi2_feat).dot(pi2_samp)
-    AB = (X @ pi_feat @ Y.T) * pi_samp
-    cost = A_sqr + B_sqr - 2 * AB.sum()
+
+    # UGW part
+    if isinstance(X_sqr, tuple):
+        X1, X2 = X_sqr
+        A = batch_calculation(X1, X2, pi1_feat)
+        A_sqr = A.dot(pi1_samp)
+        AB = (X1 @ ((X2.T @ pi_feat) @ Y.T)) * pi_samp
+        cost = A_sqr + B_sqr - 2 * AB.sum()
+
+    elif torch.is_tensor(X_sqr):
+        A_sqr = (X_sqr @ pi1_feat).dot(pi1_samp)
+        AB = (X @ pi_feat @ Y.T) * pi_samp
+        cost = A_sqr + B_sqr - 2 * AB.sum()
 
     if rho1 != float("inf") and rho1 != 0:
         cost = cost + rho1 * quad_kl(pi1_samp, pi1_feat, px_samp, px_feat)
@@ -187,23 +211,19 @@ def get_cost(pi_samp, pi_feat, data, data_T, tuple_pxy_samp, tuple_pxy_feat, hyp
         cost = cost + rho2 * quad_kl(pi2_samp, pi2_feat, py_samp, py_feat)
 
     # UOT part
-    if alpha_samp != 0:
-        uot_cost_samp = (D_samp * pi_samp).sum()
-        if rho1_samp != float("inf") and rho1_samp != 0:
-            uot_cost_samp = uot_cost_samp + rho1_samp * kl(pi1_samp, px_samp)
-        if rho2_samp != float("inf") and rho2_samp != 0:
-            uot_cost_samp = uot_cost_samp + rho2_samp * kl(pi2_samp, py_samp)            
+    if torch.is_tensor(alpha_D_samp):
+        cost = cost + (alpha_D_samp * pi_samp).sum()
+    if rho1_samp != float("inf") and rho1_samp != 0:
+        cost = cost + rho1_samp * kl(pi1_samp, px_samp)
+    if rho2_samp != float("inf") and rho2_samp != 0:
+        cost = cost + rho2_samp * kl(pi2_samp, py_samp)            
 
-        cost = cost + alpha_samp * uot_cost_samp
-
-    if alpha_feat != 0:
-        uot_cost_feat = (D_feat * pi_feat).sum()            
-        if rho1_feat != float("inf") and rho1_feat != 0:
-            uot_cost_feat = uot_cost_feat + rho1_feat * kl(pi1_feat, px_feat)
-        if rho2_feat != float("inf") and rho2_feat != 0:
-            uot_cost_feat = uot_cost_feat + rho2_feat * kl(pi2_feat, py_feat)
-
-        cost = cost + alpha_feat * uot_cost_feat
+    if torch.is_tensor(alpha_D_feat):
+        cost = cost + (alpha_D_feat * pi_feat).sum()            
+    if rho1_feat != float("inf") and rho1_feat != 0:
+        cost = cost + rho1_feat * kl(pi1_feat, px_feat)
+    if rho2_feat != float("inf") and rho2_feat != 0:
+        cost = cost + rho2_feat * kl(pi2_feat, py_feat)
 
     # Entropic part
     ent_cost = cost
@@ -229,10 +249,11 @@ def solver(
     alpha=(1, 1),
     D=(None, None),
     init_pi=(None, None),
-    init_duals=(None, None),
+    init_dual=(None, None),
     log=False,
     verbose=False,
     early_stopping_tol=1e-6,
+    mass_rescaling=True,
     eval_bcd=10,
     eval_uot=1,
     tol_bcd=1e-7,
@@ -265,7 +286,7 @@ def solver(
         By default, set to None.
     init_pi: tuple of matrices of size nx x ny and dx x dy if not None.
         Initialisation of sample and feature couplings.
-    init_duals: tuple of tuple of vectors of size (nx,ny) and (dx, dy) if not None.
+    init_dual: tuple of tuple of vectors of size (nx,ny) and (dx, dy) if not None.
         Initialisation of sample and feature dual vectos if using Sinkhorn algorithm.
     log: True if the cost is recorded, False otherwise.
     verbose: if True then print the recorded cost.
@@ -293,9 +314,16 @@ def solver(
     log_ent_cost: if log is True, return a list of entropic cost.
     """
 
-    nx, dx = X.shape
+    if isinstance(X, tuple):
+        X1, X2 = X
+        nx, dx = X1.shape[0], X2.shape[0]
+    elif torch.is_tensor(X):
+        nx, dx = X.shape
+    else:
+        raise ValueError("Invalid type of input.")
+
     ny, dy = Y.shape
-    device, dtype = X.device, X.dtype
+    device, dtype = Y.device, Y.dtype
 
     # hyper-parameters
     if isinstance(eps, float) or isinstance(eps, int):
@@ -366,11 +394,17 @@ def solver(
         D_samp, alpha_samp = 0, 0
     if D_feat is None or alpha_feat == 0:
         D_feat, alpha_feat = 0, 0
+    alpha_D_samp, alpha_D_feat = alpha_samp * D_samp, alpha_feat * D_feat
 
-    X_sqr = X ** 2
     Y_sqr = Y ** 2
-    data = (X_sqr, Y_sqr, X, Y, D_samp, alpha_samp)
-    data_T = (X_sqr.T, Y_sqr.T, X.T, Y.T, D_feat, alpha_feat)
+    if isinstance(X, tuple):
+        data = (X, Y_sqr, None ,Y, alpha_D_samp)
+        data_T = ((X2, X1), Y_sqr.T, None, Y.T, alpha_D_feat)
+        
+    elif torch.is_tensor(X):
+        X_sqr = X ** 2
+        data = (X_sqr, Y_sqr, X, Y, alpha_D_samp)
+        data_T = (X_sqr.T, Y_sqr.T, X.T, Y.T, alpha_D_feat)
 
     # initialise coupling and dual vectors
     pi_samp, pi_feat = init_pi
@@ -382,7 +416,7 @@ def solver(
     if "entropic" in uot_mode:
         self_uot_ent = partial(uot_ent, n_iters=nits_uot, tol=tol_uot, eval_freq=eval_uot)
 
-        duals_samp, duals_feat = init_duals
+        duals_samp, duals_feat = init_dual
         if uot_mode_samp == "entropic" and duals_samp is None:
             duals_samp = (torch.zeros_like(px_samp), torch.zeros_like(py_samp))  # shape nx, ny
         if uot_mode_feat == "entropic" and duals_feat is None:
@@ -401,13 +435,13 @@ def solver(
     log_ent_cost = [float("inf")]
     err = tol_bcd + 1e-3
 
-    for idx in range(nits_bcd):
+    for idx in tqdm(range(nits_bcd)):
         pi_samp_prev = pi_samp.detach().clone()
 
         # Update pi_feat (feature coupling)
         mass = pi_samp.sum()
-        new_rho1 = rho1 * mass + alpha_feat * rho1_feat
-        new_rho2 = rho2 * mass + alpha_feat * rho2_feat
+        new_rho1 = rho1 * mass + rho1_feat
+        new_rho2 = rho2 * mass + rho2_feat
         new_eps = mass * eps_feat if entropic_mode == "joint" else eps_feat
         uot_cost = self_get_local_cost(data_T, pi_samp, tuple_pxy_samp)  # size dx x dy
         uot_params = (new_rho1, new_rho2, new_eps)
@@ -416,12 +450,14 @@ def solver(
             duals_feat, pi_feat = self_uot_ent(uot_cost, duals_feat, tuple_log_pxy_feat, uot_params)
         elif uot_mode_feat == "mm":
             duals_feat, pi_feat = self_uot_mm(uot_cost, pi_feat, tuple_pxy_feat, uot_params)
-        pi_feat = (mass / pi_feat.sum()).sqrt() * pi_feat  # shape dx x dy
+
+        if mass_rescaling:
+            pi_feat = (mass / pi_feat.sum()).sqrt() * pi_feat  # shape dx x dy
 
         # Update pi (sample coupling)
         mass = pi_feat.sum()
-        new_rho1 = rho1 * mass + alpha_samp * rho1_samp
-        new_rho2 = rho2 * mass + alpha_samp * rho2_samp
+        new_rho1 = rho1 * mass + rho1_samp
+        new_rho2 = rho2 * mass + rho2_samp
         new_eps = mass * eps_samp if entropic_mode == "joint" else eps_samp
         uot_cost = self_get_local_cost(data, pi_feat, tuple_pxy_feat)  # size nx x ny
         uot_params = (new_rho1, new_rho2, new_eps)
@@ -429,8 +465,10 @@ def solver(
         if uot_mode_samp == "entropic":
             duals_samp, pi_samp = self_uot_ent(uot_cost, duals_samp, tuple_log_pxy_samp, uot_params)
         elif uot_mode_samp == "mm":
-            duals_samp, pi_samp = self_uot_mm(uot_cost, pi_samp, tuple_pxy_samp, uot_params)        
-        pi_samp = (mass / pi_samp.sum()).sqrt() * pi_samp  # shape nx x ny
+            duals_samp, pi_samp = self_uot_mm(uot_cost, pi_samp, tuple_pxy_samp, uot_params)
+
+        if mass_rescaling:
+            pi_samp = (mass / pi_samp.sum()).sqrt() * pi_samp  # shape nx x ny
 
         if idx % eval_bcd == 0:
             # Update error
