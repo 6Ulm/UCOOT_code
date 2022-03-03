@@ -84,25 +84,23 @@ class Barycenter(MegaWass):
         elif torch.is_tensor(C):
             return C.device, C.dtype
 
-    def train_individual(self, list_C, list_attr, list_p, list_params, \
-                        list_pi, list_dual, bary_attr, bary):
+    def train_individual(self, list_C, list_attr, list_p, list_params, list_pi, list_dual, bary_attr, bary):
 
-        list_pi = []
-        list_dual = []
-        list_cost = []
-
+        list_output = []
         for C, C_attr, px, params, pi, dual in zip(list_C, list_attr, list_p, list_params, list_pi, list_dual):
             rho, eps, alpha = params
-            D = torch.cdist(C_attr, bary_attr) if C_attr is not None else None
-            pi, dual, _, cost = self.fugw_solver(X=C, Y=bary, px=px, rho=rho, eps=eps, alpha=alpha, \
+            if C_attr is None:
+                D = None
+            else:
+                D = torch.cdist(C_attr, bary_attr)
+
+            output = self.fugw_solver(X=C, Y=bary, px=px, rho=rho, eps=eps, alpha=alpha, \
                         D=D, init_pi=pi, init_dual=dual)
 
-            list_pi.append(pi)
-            list_dual.append(dual)
-            list_cost.append(cost[-1])
-
-        return list_pi, list_dual, list_cost
-
+            list_output.append(output)
+        
+        return list_output
+    
     def init_bary_attr(self, list_weight, list_attr, bary_dim, random_state):
         list_weighted_attr = [w * attr for (w, attr) in zip(list_weight, list_attr) \
                             if attr is not None]
@@ -125,36 +123,33 @@ class Barycenter(MegaWass):
         list_dim = [self.get_dim(C) for C in list_C]
         if list_p is None:
             list_p = [torch.ones(n).to(device).to(dtype) / n for n in list_dim]
-
         if list_alpha is None:
             list_alpha = [0] * len(list_C)
-
         have_attr = True
         if list_attr is None:
             have_attr = False
             list_attr = [None] * len(list_C)
 
-        list_params = list(zip(list_rho, list_eps, list_alpha))
-
-        # init methods
-        train = partial(self.train_individual, list_C=list_C, list_attr=list_attr, \
-                        list_p=list_p, list_params=list_params)
-        megawass = MegaWass(nits_bcd=self.nits_bcd, tol_bcd=self.tol_bcd, eval_bcd=self.eval_bcd, \
-                            nits_uot=self.nits_uot, tol_uot=self.tol_uot, eval_uot=self.eval_uot)
-        self.fugw_solver = partial(megawass.solver_fugw_full, py=bary_p, log=True, uot_mode=uot_mode, \
-                                entropic_mode=entropic_mode, verbose=False, \
-                                early_stopping_tol=early_stopping_tol, mass_rescaling=mass_rescaling)
-
-        # init of barycenter
         if bary_p is None:
             bary_p = torch.ones(bary_dim).to(device).to(dtype) / bary_dim
         if bary is None:
             bary = torch.ones(bary_dim, bary_dim).to(device).to(dtype)
         if bary_attr is None and have_attr:
-            bary_attr = self.init_bary_attr(list_weight, list_attr, bary_dim, random_state)
-            bary_attr = bary_attr.to(device).to(dtype)
+            d = list_attr[0].shape[1]
+            bary_attr = torch.rand(bary_dim, d).to(device).to(dtype)
+            # bary_attr = self.init_bary_attr(list_weight, list_attr, bary_dim, random_state)
+            # bary_attr = bary_attr.to(device).to(dtype)
 
-        # init training variables
+        megawass = MegaWass(nits_bcd=self.nits_bcd, tol_bcd=self.tol_bcd, eval_bcd=self.eval_bcd, \
+                            nits_uot=self.nits_uot, tol_uot=self.tol_uot, eval_uot=self.eval_uot)
+        self.fugw_solver = partial(megawass.solver_fugw_full, py=bary_p, log=True, uot_mode=uot_mode, \
+                            entropic_mode=entropic_mode, verbose=False, \
+                            early_stopping_tol=early_stopping_tol, mass_rescaling=mass_rescaling)
+
+        list_params = list(zip(list_rho, list_eps, list_alpha))
+        train = partial(self.train_individual, list_C=list_C, list_attr=list_attr, \
+                        list_p=list_p, list_params=list_params)
+
         list_pi = [p[:,None] * bary_p[None,:] for p in list_p]
         list_pi = [(pi, pi) for pi in list_pi]
 
@@ -166,8 +161,13 @@ class Barycenter(MegaWass):
 
         for idx in range(self.nits_bary):
 
-            list_pi, list_dual, list_cost = train(list_pi=list_pi, list_dual=list_dual, \
-                                                bary_attr=bary_attr, bary=bary)
+            list_output = train(list_pi=list_pi, list_dual=list_dual, bary_attr=bary_attr, bary=bary)
+
+            list_pi = [output[0] for output in list_output]
+            list_dual = [output[1] for output in list_output]
+            list_cost = [output[3][-1] for output in list_output]
+
+            del list_output
 
             bary = self.update_bary(list_pi, list_weight, list_C)
             if have_attr:
@@ -181,7 +181,7 @@ class Barycenter(MegaWass):
             log_cost.append(cost)
             if abs(log_cost[-2] - log_cost[-1]) < self.tol_bary:
                 break
-
+        
         if log:
             return bary, bary_attr, log_cost[1:]
         else:
