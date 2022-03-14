@@ -199,7 +199,7 @@ class Barycenter(MegaWass):
         if bary_p is None:
             bary_p = torch.ones(bary_dim).to(device).to(dtype) / bary_dim
         if bary is None:
-            bary = torch.ones(bary_dim, bary_dim).to(device).to(dtype)
+            bary = torch.rand(bary_dim, bary_dim).to(device).to(dtype)
         if bary_attr is None and have_attr:
             d = list_attr[0].shape[1]
             bary_attr = torch.rand(bary_dim, d).to(device).to(dtype)
@@ -279,6 +279,6 @@ class Barycenter(MegaWass):
                 break
 
         if log:
-            return bary, bary_attr, log_cost[1:]
+            return bary, bary_attr, log_cost[1:], list_pi
         else:
             return bary, bary_attr
