@@ -18,7 +18,7 @@ class MegaWass:
 
     def get_barycentre(self, Xt, pi_samp):
         """
-        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt 
+        Calculate the barycentre by the following formula: diag(1 / P1_{n_2}) P Xt
         (need to be typed in latex).
 
         Parameters
@@ -51,7 +51,7 @@ class MegaWass:
         init_dual=(None, None),
         log=False,
         verbose=False,
-        early_stopping_tol=1e-6, 
+        early_stopping_tol=1e-6,
         mass_rescaling=True
     ):
         """
@@ -114,8 +114,8 @@ class MegaWass:
         mass_rescaling=True
     ):
         """
-        If you want to use fused COOT, it is recommended to use COOT from POT because it is 
-        much more optimised.        
+        If you want to use fused COOT, it is recommended to use COOT from POT because it is
+        much more optimised.
         """
 
         rho = (float("inf"), float("inf"), 0, 0, 0, 0)
@@ -157,22 +157,22 @@ class MegaWass:
         px: tuple of 2 vectors of length (nx, dx). Measures assigned on rows and columns of X.
         py: tuple of 2 vectors of length (ny, dy). Measures assigned on rows and columns of Y.
         rho: tuple of 2 relaxation parameters (rho_x, rho_y) for UCOOT.
-        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation. 
+        eps: tuple of regularisation parameters (eps_samp, eps_feat) for entropic approximation.
             If mode == "joint" then only eps_samp is used.
         C_linear: tuple of tensors of size (nx x ny) and (dx x dy): the linear terms in the fused formulation.
         reg_mode:
             reg_mode="joint": use UGW-like regularisation term.
             reg_mode = "independent": use COOT-like regularisation.
-        init_pi: tuple of initialisation for sample and feature couplings: 
+        init_pi: tuple of initialisation for sample and feature couplings:
             matrices of size (nx x ny) and (dx x dy). If not available then assign None.
         init_dual: tuple of two tuples containing initialisation of duals for Sinkhorn algorithm.
         log: True if the loss is recorded, False otherwise.
         verbose: if True then print the recorded loss.
-        early_stopping_threshold: trigger early stopping if the absolute difference between the two most 
+        early_stopping_threshold: trigger early stopping if the absolute difference between the two most
             recent loss is smaller than this threshold.
-        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e. 
+        eval_freq_loss: The multiplier of iteration at which the loss is calculated, i.e.
             if eval_freq_loss = 10, then the loss is calculated at iteration 10, 20, 30, etc...
-        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated 
+        eval_freq_sinkhorn: The multiplier of iteration at which the change of dual is calculated
             in the Sinkhorn algorithm.
 
         Returns
@@ -206,7 +206,7 @@ class MegaWass:
         mass_rescaling=True
     ):
         """
-        If you want to use fused GW, it is recommendeded to use COOT from POT because it is 
+        If you want to use fused GW, it is recommendeded to use COOT from POT because it is
         more optimised.
         """
 
@@ -287,8 +287,8 @@ class MegaWass:
         entropic_mode="joint",
         alpha=1,
         D=None,
-        init_pi=(None,None),
-        init_dual=None,
+        init_pi=(None, None),
+        init_dual=(None, None),
         log=False,
         verbose=False,
         early_stopping_tol=1e-6,
@@ -312,7 +312,6 @@ class MegaWass:
 
         px, py, D, eps, alpha = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha)
         uot_mode = (uot_mode, uot_mode)
-        init_dual = (init_dual, init_dual)
         rho1, rho2, rho3, rho4 = rho
         rho = (rho1, rho2, rho3, rho4, rho3, rho4)
 
@@ -321,7 +320,7 @@ class MegaWass:
 
     ##################################
     ##################################
-    # For uot_mode = "entropic", 
+    # For uot_mode = "entropic",
     # use warmstart for small epsilon
     ##################################
     ##################################
@@ -348,7 +347,7 @@ class MegaWass:
     #     niter_warmstart_uot=10
     # ):
     #     """
-    #     Solver with warm start for small epsilon, 
+    #     Solver with warm start for small epsilon,
     #     for entropic_mode="joint", or "independent" with two equals epsilons.
     #     """
 
