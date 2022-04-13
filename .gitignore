@@ -289,3 +289,6 @@ TSWLatexianTemp*
 #*Notes.bib
 
 .sync-config.cson
+
+**/__pycache__
+*.egg-info
