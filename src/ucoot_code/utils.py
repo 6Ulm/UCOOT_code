@@ -4,6 +4,11 @@ from functools import partial
 from tqdm import tqdm
 
 def batch_calculation(mat1, mat2, vec):
+    """
+    Suppose X = mat1 @ mat2.T, where mat1 and mat2 are low rank and X is not stockable in the memory.
+    Calculate (X \odot X) @ vec in batch, where \odot is the element-wise multiplication.
+    """
+
     m, n = mat1.shape[0], mat2.shape[0]
     bs = min(int(1e8 / n), m)
     rg = range(0, m, bs)
@@ -66,6 +71,7 @@ def uot_ent(cost, init_dual, tuple_log_p, params, n_iters, tol, eval_freq):
 
     for idx in range(n_iters):
         f_prev = f.detach().clone()
+
         if rho2 == 0: # semi-relaxed
             g = torch.zeros_like(g)
         else:
@@ -92,8 +98,8 @@ def uot_ent(cost, init_dual, tuple_log_p, params, n_iters, tol, eval_freq):
 #     log_a, log_b, _ = tuple_log_p
 #     rho1, rho2, eps = params
 #     sum_param = rho1 + rho2 + eps
-#     tau1, tau2, rho_r = rho1 / sum_param, rho2 / sum_param, eps / sum_param
-#     log_K = (tau1 + rho_r) * log_a[:,None] + (tau2 + rho_r) * log_b[None,:] - cost / sum_param
+#     tau1, tau2, reg = rho1 / sum_param, rho2 / sum_param, eps / sum_param
+#     log_K = (tau1 + reg) * log_a[:,None] + (tau2 + reg) * log_b[None,:] - cost / sum_param
     
 #     log_pi = torch.log(init_pi + 1.0 * (init_pi == 0))
 #     log_m1, log_m2 = init_pi.sum(1).log(), init_pi.sum(0).log()
@@ -112,22 +118,26 @@ def uot_ent(cost, init_dual, tuple_log_p, params, n_iters, tol, eval_freq):
 def uot_mm(cost, init_pi, tuple_p, params, n_iters, tol, eval_freq):
     """
     Solve (entropic) UOT using the max-min algorithm.
+
     Allow epsilon to be 0 but rho1 and rho2 can't be infinity.
+
     Note that if the parameters are small so that numerically, the exponential of 
     negative cost will contain zeros and this serves as sparsification of the optimal plan. 
+
     If the parameters are large, then the resulting optimal plan is more dense than the one 
     obtained from Sinkhorn algo. 
-    But the parameters should not be too small, otherwise the kernel will contain too many zeros 
+    But all parameters should not be too small, otherwise the kernel will contain too many zeros 
     and consequently, the optimal plan will contain NaN (because the Kronecker sum of two marginals 
     will eventually contain zeros, and divided by zero will result in undesirable result).
     """
 
     a, b, _ = tuple_p
     rho1, rho2, eps = params
+
     sum_param = rho1 + rho2 + eps
-    tau1, tau2, rho_r = rho1 / sum_param, rho2 / sum_param, eps / sum_param
-    K = a[:,None]**(tau1 + rho_r) * b[None,:]**(tau2 + rho_r) * (- cost / sum_param).exp()
-    
+    tau1, tau2, reg = rho1 / sum_param, rho2 / sum_param, eps / sum_param
+    K = a[:,None]**(tau1 + reg) * b[None,:]**(tau2 + reg) * (- cost / sum_param).exp()
+
     m1, m2, pi = init_pi.sum(1), init_pi.sum(0), init_pi
 
     for idx in range(n_iters):
@@ -143,7 +153,7 @@ def uot_mm(cost, init_pi, tuple_p, params, n_iters, tol, eval_freq):
 def get_local_cost(data, pi, tuple_p, hyperparams, entropic_mode):
     """
     Calculate cost of the UOT.
-    cost = (X**2 * P_#1 + Y**2 * P_#2 - 2 * X * P * Y.T) + 
+    cost = (X**2 @ P_#1 + Y**2 @ P_#2 - 2 * X @ P @ Y.T) + alpha * D +
             rho1 * approx_kl(P_#1 | a) + rho2 * approx_kl(P_#2 | b) +
             eps * approx_kl(P | a \otimes b)
     """
@@ -190,20 +200,19 @@ def get_cost(pi_samp, pi_feat, data, data_T, tuple_pxy_samp, tuple_pxy_feat, hyp
     pi1_samp, pi2_samp = pi_samp.sum(1), pi_samp.sum(0)
     pi1_feat, pi2_feat = pi_feat.sum(1), pi_feat.sum(0)
 
-    B_sqr = (Y_sqr @ pi2_feat).dot(pi2_samp)
-
     # UGW part
     if isinstance(X_sqr, tuple):
         X1, X2 = X_sqr
         A = batch_calculation(X1, X2, pi1_feat)
         A_sqr = A.dot(pi1_samp)
         AB = (X1 @ ((X2.T @ pi_feat) @ Y.T)) * pi_samp
-        cost = A_sqr + B_sqr - 2 * AB.sum()
 
     elif torch.is_tensor(X_sqr):
         A_sqr = (X_sqr @ pi1_feat).dot(pi1_samp)
         AB = (X @ pi_feat @ Y.T) * pi_samp
-        cost = A_sqr + B_sqr - 2 * AB.sum()
+
+    B_sqr = (Y_sqr @ pi2_feat).dot(pi2_samp)
+    cost = A_sqr + B_sqr - 2 * AB.sum()
 
     if rho1 != float("inf") and rho1 != 0:
         cost = cost + rho1 * quad_kl(pi1_samp, pi1_feat, px_samp, px_feat)
