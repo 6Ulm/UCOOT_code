@@ -287,7 +287,7 @@ class MegaWass:
         entropic_mode="joint",
         alpha=1,
         D=None,
-        init_pi=None,
+        init_pi=(None,None),
         init_dual=None,
         log=False,
         verbose=False,
@@ -312,7 +312,7 @@ class MegaWass:
 
         px, py, D, eps, alpha = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha)
         uot_mode = (uot_mode, uot_mode)
-        init_pi, init_dual = (init_pi, init_pi), (init_dual, init_dual)
+        init_dual = (init_dual, init_dual)
         rho1, rho2, rho3, rho4 = rho
         rho = (rho1, rho2, rho3, rho4, rho3, rho4)
 
