@@ -1,7 +1,6 @@
 from warnings import WarningMessage
-from ucoot_code.utils import solver
-# import torch
-
+from .utils import solver
+import torch
 
 class MegaWass:
     def __init__(self, nits_bcd=100, tol_bcd=1e-7, eval_bcd=5, nits_uot=100, tol_uot=1e-7, eval_uot=1):
@@ -73,7 +72,7 @@ class MegaWass:
         D: matrix of size nx x ny. Sample matrix, in case of fused GW
         px: tuple of 2 vectors of length (nx, dx). Measures assigned on rows and columns of X.
         py: tuple of 2 vectors of length (ny, dy). Measures assigned on rows and columns of Y.
-        rho: tuple of 4 relaxation parameters for UGW and UOT.
+        rho: tuple of 6 relaxation parameters for UGW and UOT.
         eps: regularisation parameter for entropic approximation.
         alpha: between 0 and 1. Interpolation parameter for fused UGW.
         entropic_mode:
@@ -107,6 +106,7 @@ class MegaWass:
         eps=(1e-2, 1e-2),
         alpha=(1, 1),
         D=(None, None),
+        init_pi=(None, None),
         init_dual=(None, None),
         log=False,
         verbose=False,
@@ -121,7 +121,6 @@ class MegaWass:
         rho = (float("inf"), float("inf"), 0, 0, 0, 0)
         uot_mode = ("entropic", "entropic")
         entropic_mode = "independent"
-        init_pi = (None, None)
 
         return self.solver_megawass(X, Y, px, py, rho, uot_mode, eps, entropic_mode, alpha, D, \
                                 init_pi, init_dual, log, verbose, early_stopping_tol, mass_rescaling)
@@ -199,6 +198,7 @@ class MegaWass:
         eps=1e-2,
         alpha=1,
         D=None,
+        init_pi=None,
         init_dual=None,
         log=False,
         verbose=False,
@@ -206,8 +206,8 @@ class MegaWass:
         mass_rescaling=True
     ):
         """
-        If you want to use fused GW, it is recommended to use COOT from POT because it is 
-        much more optimised.
+        If you want to use fused GW, it is recommendeded to use COOT from POT because it is 
+        more optimised.
         """
 
         if isinstance(X, tuple):
@@ -220,10 +220,11 @@ class MegaWass:
 
         ny, dy = Y.shape
         if nx != dx or ny != dy:
-            raise ValueError("The input matrix is not squared.")
+            raise ValueError("Input matrix is not squared.")
 
-        px, py, D, init_dual = (px, px), (py, py), (D, D), (init_dual, init_dual)
-        init_pi = (None, None)
+        px, py, D, alpha = (px, px), (py, py), (D, D), (alpha, alpha)
+        init_dual = (init_dual, init_dual)
+        init_pi = (init_pi, init_pi)
         uot_mode = ("entropic", "entropic")
         entropic_mode = "independent"
         rho = (float("inf"), float("inf"), 0, 0, 0, 0)
@@ -251,7 +252,7 @@ class MegaWass:
         mass_rescaling=True
     ):
         """
-        Simple Fused UGW (no KL term in the UOT)
+        Simple Fused UGW (no KL term in the UOT). Similar to FUCOOT.
         """
 
         if isinstance(X, tuple):
@@ -266,7 +267,8 @@ class MegaWass:
         if nx != dx or ny != dy:
             raise ValueError("The input matrix is not squared.")
 
-        px, py, D, eps, alpha, uot_mode = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha), (uot_mode, uot_mode)
+        px, py, D, eps, alpha = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha)
+        uot_mode = (uot_mode, uot_mode)
         rho1, rho2 = rho
         rho = (rho1, rho2, 0, 0, 0, 0)
 
@@ -285,8 +287,8 @@ class MegaWass:
         entropic_mode="joint",
         alpha=1,
         D=None,
-        init_pi=(None, None),
-        init_dual=(None, None),
+        init_pi=None,
+        init_dual=None,
         log=False,
         verbose=False,
         early_stopping_tol=1e-6,
@@ -308,7 +310,9 @@ class MegaWass:
         if nx != dx or ny != dy:
             raise ValueError("The input matrix is not squared.")
 
-        px, py, D, eps, alpha, uot_mode = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha), (uot_mode, uot_mode)
+        px, py, D, eps, alpha = (px, px), (py, py), (D, D), (eps, eps), (alpha, alpha)
+        uot_mode = (uot_mode, uot_mode)
+        init_pi, init_dual = (init_pi, init_pi), (init_dual, init_dual)
         rho1, rho2, rho3, rho4 = rho
         rho = (rho1, rho2, rho3, rho4, rho3, rho4)
 
