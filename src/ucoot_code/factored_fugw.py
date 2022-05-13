@@ -195,6 +195,7 @@ class Barycenter(MegaWass):
         entropic_mode="joint",
         mass_rescaling=True,
         force_psd=False,
+        fix_bary=False,
     ):
         """
         (Cs, C)
@@ -275,7 +276,11 @@ class Barycenter(MegaWass):
                 bary=bary,
             )
 
-            bary = self.update_bary(list_pi, list_weight, list_C, force_psd)
+            if not fix_bary:
+                bary = self.update_bary(
+                    list_pi, list_weight, list_C, force_psd
+                )
+
             if have_attr:
                 bary_attr = self.update_bary_attr(
                     list_pi, list_weight, list_attr
