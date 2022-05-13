@@ -38,7 +38,12 @@ class Barycenter(MegaWass):
 
         bary = 0
         # pi_samp, pi_feat: both of size (ns, n)
-        for pi, w, C in zip(list_pi, list_weight, list_C):
+        for i, (pi, w) in enumerate(zip(list_pi, list_weight)):
+            if len(list_C) == 1 and len(list_weight) > 1:
+                C = list_C[0]
+            else:
+                C = list_C[i]
+
             pi_samp, pi_feat = pi
             pi1_samp, pi1_feat = pi_samp.sum(0), pi_feat.sum(0)
 
@@ -129,9 +134,14 @@ class Barycenter(MegaWass):
         list_dual_new = []
         list_cost = []
 
-        for C, C_attr, px, params, pi, dual in zip(
-            list_C, list_attr, list_p, list_params, list_pi, list_dual
+        for i, (C_attr, px, params, pi, dual) in enumerate(
+            zip(list_attr, list_p, list_params, list_pi, list_dual)
         ):
+            if len(list_C) == 1 and len(list_p) > 1:
+                C = list_C[0]
+            else:
+                C = list_C[i]
+
             rho, eps, alpha = params
             D = (
                 torch.cdist(C_attr, bary_attr) ** 2
@@ -204,17 +214,21 @@ class Barycenter(MegaWass):
         device, dtype = self.get_device_dtype(list_C[0])
 
         # init of lists
-        list_dim = [self.get_dim(C) for C in list_C]
+        if len(list_C) == 1 and len(list_weight) > 1:
+            list_dim = [self.get_dim(list_C[0])] * len(list_weight)
+        else:
+            list_dim = [self.get_dim(C) for C in list_C]
+
         if list_p is None:
             list_p = [torch.ones(n).to(device).to(dtype) / n for n in list_dim]
 
         if list_alpha is None:
-            list_alpha = [0] * len(list_C)
+            list_alpha = [0] * len(list_weight)
 
         have_attr = True
         if list_attr is None:
             have_attr = False
-            list_attr = [None] * len(list_C)
+            list_attr = [None] * len(list_weight)
 
         list_params = list(zip(list_rho, list_eps, list_alpha))
 
